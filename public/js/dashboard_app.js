@@ -23,7 +23,7 @@ socket.on('config', function(config) {
     for(var i=0; i<config.nbSensors; i++) {
       var s = new GaugeComponent();
       s.setDimensions(6,4);
-      s.setLimits(0, 120);
+      s.setLimits(0, 100);
       s.lock();
       db1.addComponent(s);
       sensorsGauges.push(s);

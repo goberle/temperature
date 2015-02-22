@@ -1,3 +1,12 @@
+/*
+ * Security
+ */
+process.setgid('pi');
+process.setuid('pi');
+
+/*
+ * Requirements
+ */
 var express = require('express');
 var app = express();
 var http = require('http').Server(app);
@@ -10,23 +19,28 @@ var async = require('async');
  */
 var sensors = [ 
   {
-    name: "Sensor1",
+    name: "Chaudière bois",
+    offset: 0,
     path: "/sys/bus/w1/devices/28-00000626d601/w1_slave"
   },
   {
-    name: "Sensor2",
+    name: "Chaudière fioul",
+    offset: 5,
     path: "/sys/bus/w1/devices/28-000006281950/w1_slave"
   },
-  {
-    name: "Sensor3",
-    path: "/sys/bus/w1/devices/28-00000626e75a/w1_slave"
-  },
-  {
-    name: "Sensor4",
-    path: "/sys/bus/w1/devices/28-00000626a49a/w1_slave"
-  },
+  //{
+  //  name: "Sensor3",
+  //  offset: 0,
+  //  path: "/sys/bus/w1/devices/28-00000626e75a/w1_slave"
+  //},
+  //{
+  //  name: "Sensor4",
+  //  offset: 0,
+  //  path: "/sys/bus/w1/devices/28-00000626a49a/w1_slave"
+  //},
   { 
-    name: "Sensor5",
+    name: "Ballon tampon",
+    offset: 0,
     path: "/sys/bus/w1/devices/28-000006284772/w1_slave"
   }
 ];
@@ -51,7 +65,7 @@ function extractTempFromDevice(sensor, callback) {
     else {
       var data = buffer.toString('ascii').split(" ");
       var temp = parseFloat(data[data.length-1].split("=")[1])/1000.0;
-      callback(err, { name: sensor.name, temp: temp });
+      callback(err, { name: sensor.name, temp: temp+sensor.offset });
     }
   });
 }

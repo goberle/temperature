@@ -1,0 +1,97 @@
+#define BUILDING_NODE_EXTENSION
+#include <node.h>
+#include "RCSwitch.h"
+
+using namespace v8;
+
+uv_async_t async;
+uv_rwlock_t lock;
+RCSwitch radio;
+
+struct radioData {
+  Persistent<Function> callback;
+  unsigned int identifier;
+  float temperature;
+};
+
+struct js_work {
+  uv_work_t req;
+  Persistent<Function> callback;
+};
+
+void radioThread(uv_work_t *req) {
+  js_work* work = static_cast<js_work*>(req->data);
+  radioData data;
+
+  data.callback = work->callback;
+  
+  while (1) {
+    if (radio.available()) {
+      if (radio.getReceivedBitlength() == 24) {
+        unsigned int value = radio.getReceivedValue();
+
+	uv_rwlock_wrlock(&lock);
+        data.identifier = value >> 16;
+        data.temperature = static_cast<float>((value & 0xFFFF) / 16.0);
+	uv_rwlock_wrunlock(&lock);
+
+        async.data = (void*) &data;
+        uv_async_send(&async);
+      }
+
+      radio.resetAvailable();
+    }
+  }
+}
+
+void handleReceived(uv_async_t *handle, int status) {
+  radioData *data = (radioData*) handle->data;
+
+  uv_rwlock_rdlock(&lock);
+  Persistent<Function> callback = data->callback;
+  Handle<Value> argv[2] = {
+    Number::New(data->identifier),
+    Number::New(data->temperature)
+  };
+  uv_rwlock_rdunlock(&lock);
+
+  TryCatch try_catch;
+
+  node::MakeCallback(Context::GetCurrent()->Global(), callback, 2, argv);
+
+  if (try_catch.HasCaught()) {
+    node::FatalException(try_catch);
+  }
+}
+
+void after(uv_work_t *req, int status) {
+}
+
+Handle<Value> Start(const Arguments& args) {
+  HandleScope scope;
+
+  assert(args.Length() == 1);
+  assert(args[0]->IsFunction());
+
+  wiringPiSetup();
+  int PIN = 2;
+
+  radio = RCSwitch();
+  radio.enableReceive(PIN);
+
+  js_work* work = new js_work;
+  work->req.data = work;
+  work->callback = Persistent<Function>::New(args[0].As<Function>());
+
+  uv_async_init(uv_default_loop(), &async, handleReceived);
+  uv_queue_work(uv_default_loop(), &work->req, radioThread, after);
+
+  return Undefined();
+}
+
+void Init(Handle<Object> exports) {
+  exports->Set(String::NewSymbol("start"),
+      FunctionTemplate::New(Start)->GetFunction());
+}
+
+NODE_MODULE(addon, Init)

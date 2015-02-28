@@ -1,10 +1,4 @@
 /*
- * Security
- */
-process.setgid('pi');
-process.setuid('pi');
-
-/*
  * Requirements
  */
 var express = require('express');
@@ -13,84 +7,62 @@ var http = require('http').Server(app);
 var io = require('socket.io')(http);
 var fs = require('fs');
 var async = require('async');
+var radio = require('./build/Release/addon');
 
 /* 
  * Configurations
  */
-var sensors = [ 
-  {
+var sensors = { 
+  160: {
     name: "Chaudière bois",
     offset: 0,
-    path: "/sys/bus/w1/devices/28-00000626d601/w1_slave"
+    radioId: 10100000,
+    currentTemp: -1,
   },
-  {
+  161: {
     name: "Chaudière fioul",
     offset: 5,
-    path: "/sys/bus/w1/devices/28-000006281950/w1_slave"
+    radioId: 10100001,
+    currentTemp: -1,
   },
-  //{
-  //  name: "Sensor3",
-  //  offset: 0,
-  //  path: "/sys/bus/w1/devices/28-00000626e75a/w1_slave"
-  //},
-  //{
-  //  name: "Sensor4",
-  //  offset: 0,
-  //  path: "/sys/bus/w1/devices/28-00000626a49a/w1_slave"
-  //},
-  { 
+  10100010: { 
     name: "Ballon tampon",
     offset: 0,
-    path: "/sys/bus/w1/devices/28-000006284772/w1_slave"
+    radioId: 10100010,
+    currentTemp: -1,
   }
-];
+};
+
+radio.start(2, function(identifier, temperature) {
+  if (sensors[identifier])
+    sensors[identifier].currentTemp = temperature;
+  else
+    console.log('Unknown sensor : ', identifier);
+});
+
+/*
+ * Security
+ */
+process.setgid('pi');
+process.setuid('pi');
 
 var dashboardConfig = { 
   dashboardTitle: 'Température Chaudière',
-  nbSensors: sensors.length,
-}
+  nbSensors: 3,
+};
 
 app.use(express.static(__dirname + '/public'));
 
-/*
- * Read temperature from sensor
- */
-function extractTempFromDevice(sensor, callback) {
-  fs.readFile(sensor.path, function (err, buffer) {
-    if (err)
-      if (err.code == 'ENOENT')
-        callback(null, { name: sensor.name, temp: -1 });
-      else
-        callback(err);
-    else {
-      var data = buffer.toString('ascii').split(" ");
-      var temp = parseFloat(data[data.length-1].split("=")[1])/1000.0;
-      callback(err, { name: sensor.name, temp: temp+sensor.offset });
-    }
-  });
-}
-
 function readSensors(s) {
-  async.waterfall([
-    function (callback) {
-      async.map(s, extractTempFromDevice, function (err, res) {
-        callback(err, res);
-      });
-    },
-    function (temps, callback) {
-      var data = {
-        time: Date.now(),
-        sensors: temps,
-      };
-      callback(null, data);
-    }
-  ], function (err, res) {
-    if (err)
-      console.log(err);
-    else {
-      io.emit('data', res);
-    }
-  });
+  var data = {
+    time: Date.now(),
+    sensors: [],
+  };
+
+  for (var i in sensors)
+    data.sensors.push({ name: sensors[i].name, temp: sensors[i].currentTemp});
+
+  io.emit('data', data);
 }
 
 function logTemp(interval) {
@@ -115,5 +87,5 @@ http.listen(8080, function(){
   console.log('listening on *:8080');
 });
 
-logTemp(1000);
+logTemp(5000);
 

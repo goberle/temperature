@@ -30,6 +30,7 @@ socket.on('config', function(config) {
     }
 
     socket.on('data', function(d) {
+      console.log(d);
       for (var i=0; i<d.sensors.length; i++) {
         sensorsGauges[i].setValue(d.sensors[i].temp, {numberSuffix: '° C', numberDecimalPoints: 1});
         if (sensorsGauges[i].isLocked()) {
